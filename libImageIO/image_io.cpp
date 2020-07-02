@@ -59,7 +59,7 @@ Format GetFormat(const char *c) {
   if (CmpFormatExt(p, ".jpg")) return Jpg;
   if (CmpFormatExt(p, ".jpeg")) return Jpg;
 
-  cerr << "Error: Couldn't open " << c << " Unknown file format";
+  cerr << "Error: Couldn't open " << c << ": Unknown file format" << endl;
   return Unknown;
 }
 
@@ -109,7 +109,7 @@ int ReadJpg(const char * filename,
 
   FILE *file = fopen(filename, "rb");
   if (!file) {
-    cerr << "Error: Couldn't open " << filename << " fopen returned 0";
+    cerr << "Error: Couldn't open " << filename << ": fopen returned 0" <<endl;
     return 0;
   }
   int res = ReadJpgStream(file, ptr, w, h, depth);
@@ -187,7 +187,7 @@ int WriteJpg(const char * filename,
              int quality) {
   FILE *file = fopen(filename, "wb");
   if (!file) {
-    cerr << "Error: Couldn't open " << filename << " fopen returned 0";
+    cerr << "Error: Couldn't open " << filename << ": fopen returned 0" << endl;
     return 0;
   }
   int res = WriteJpgStream(file, array, w, h, depth, quality);
@@ -202,7 +202,7 @@ int WriteJpgStream(FILE *file,
                    int depth,
                    int quality) {
   if (quality < 0 || quality > 100)
-    cerr << "Error: The quality parameter should be between 0 and 100";
+    cerr << "Error: The quality parameter should be between 0 and 100" << endl;
 
   struct jpeg_compress_struct cinfo;
   struct jpeg_error_mgr jerr;
@@ -220,7 +220,7 @@ int WriteJpgStream(FILE *file,
   } else if (cinfo.input_components==1) {
     cinfo.in_color_space = JCS_GRAYSCALE;
   } else {
-    cerr << "Error: Unsupported number of channels in file";
+    cerr << "Error: Unsupported number of channels in file" << endl;
     jpeg_destroy_compress(&cinfo);
     return 0;
   }
@@ -256,7 +256,7 @@ int ReadPng(const char *filename,
             int * depth) {
   FILE *file = fopen(filename, "rb");
   if (!file) {
-    cerr << "Error: Couldn't open " << filename << " fopen returned 0";
+    cerr << "Error: Couldn't open " << filename << ": fopen returned 0" << endl;
     return 0;
   }
   int res = ReadPngStream(file, ptr, w, h, depth);
@@ -273,7 +273,7 @@ int ReadPngStream(FILE *file,
   png_byte header[8];
 
   if (fread(header, 1, 8, file) != 8) {
-    cerr << "fread failed.";
+    cerr << "fread failed." << endl;
   }
   if (png_sig_cmp(header, 0, 8))
     return 0;
@@ -347,7 +347,7 @@ int WritePng(const char * filename,
              int depth) {
   FILE *file = fopen(filename, "wb");
   if (!file) {
-    cerr << "Error: Couldn't open " << filename << " fopen returned 0";
+    cerr << "Error: Couldn't open " << filename << ": fopen returned 0" << endl;
     return 0;
   }
   int res = WritePngStream(file, ptr, w, h, depth);
@@ -432,7 +432,7 @@ int ReadPnm(const char * filename,
             int * depth)  {
   FILE *file = fopen(filename, "rb");
   if (!file) {
-    cerr << "Error: Couldn't open " << filename << " fopen returned 0";
+    cerr << "Error: Couldn't open " << filename << ": fopen returned 0" << endl;
     return 0;
   }
   int res = ReadPnmStream(file, array, w, h, depth);
@@ -528,7 +528,7 @@ int WritePnm(const char * filename,
               int depth) {
   FILE *file = fopen(filename, "wb");
   if (!file) {
-    cerr << "Error: Couldn't open " << filename << " fopen returned 0";
+    cerr << "Error: Couldn't open " << filename << ": fopen returned 0" << endl;
     return 0;
   }
   int res = WritePnmStream(file, array, w, h, depth);
