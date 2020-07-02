@@ -57,7 +57,8 @@ class Polarizer {
     double r, R; ///< Min/max radii
     double t, T; ///< Min/max angles
     bool rotate; ///< Image needs rotation
-    
+
+    bool inf() const { return c(2)==0; } ///< Center at infinity?
     double dist_rect(int w, int h) const;
     std::pair<int,int> region(int w, int h) const;
     std::pair<double,double> transfer_angle(const Polarizer& P,
@@ -80,13 +81,22 @@ public:
 };
 
 /// Polar transform of vector (x,y). Output is (rho,theta).
+/// Special case: center at infinity, direction of line (c(0),c(1)).
+/// Then theta is the (signed) distance from (0,0) to the line through (x,y) and
+/// rho is the abscissa along the line wrt projection of (0,0) on the line.
 std::pair<double,double> Polarizer::polar(double x, double y) const {
-    Vec v(x-c(0)/c(2), y-c(1)/c(2));
-    double rho = sqrt( v.qnorm() );
-    double theta = 0;
-    if(rho>0) {
-        v /= rho;
-        theta = atan2(v(1),v(0));
+    double rho,theta;
+    if(inf()) {
+        rho   =  c(0)*x + c(1)*y;
+        theta = -c(1)*x + c(0)*y;
+    } else {
+        Vec v(x-c(0)/c(2), y-c(1)/c(2));
+        rho = sqrt( v.qnorm() );
+        theta = 0;
+        if(rho>0) {
+            v /= rho;
+            theta = atan2(v(1),v(0));
+        }
     }
     return std::make_pair(rho,theta);
 }
@@ -101,7 +111,7 @@ int Polarizer::width() const {
 
 /// Height of polar image with theta in [t,T].
 int Polarizer::height() const {
-    double deltaT = 1/R;
+    double deltaT = inf()? 1: 1/R;
     int h = 0;
     for(double theta=t; theta<T; theta+=deltaT)
         ++h;
@@ -110,14 +120,27 @@ int Polarizer::height() const {
 
 /// Transfer epipolar line at angle \a theta with F.
 /// Return cos/sin of corresponding epipolar line orientation (wrt center of P).
+/// If center of \c this is at infinity, \a theta is the signed distance to O.
+/// If center of \a P    is at infinity, return the projection of O on line.
 std::pair<double,double> Polarizer::transfer_angle(const Polarizer& P,
                                                    double theta,
                                                    const Mat* F) const {
-    double dx=cos(theta), dy=sin(theta);
-    if(! F)
-        return std::make_pair(dx,dy);
-    Vec p(c(0)+R*dx*c(2), c(1)+R*dy*c(2), c(2));
+    Vec p(3);
+    if(inf()) { // center of this at infinity
+        p = Vec(-theta*c(1), theta*c(0), 1.0); // Projection of O on line
+        if(! F)
+            return std::make_pair(p(0), p(1));
+    } else { // finite center
+        double dx=cos(theta), dy=sin(theta);
+        if(! F)
+            return std::make_pair(dx,dy);
+        p = Vec(c(0)+R*dx*c(2), c(1)+R*dy*c(2), c(2));
+    }
     p = (*F)*p;
+    if(P.inf()) {
+        theta = p(2)/(p(0)*P.c(1)-p(1)*P.c(0));
+        return std::make_pair(-theta*P.c(1),theta*P.c(0));
+    }
     p(2) = 0;
     if(c(2)*P.c(2)<0) p = -p;
     double rho = sqrt( p.qnorm() );
@@ -133,6 +156,8 @@ static double clamp(double x, double m, double M) {
 
 /// Distance from center to filled rectangle [0,w]x[0,h].
 double Polarizer::dist_rect(int w, int h) const {
+    if(inf())
+        return 0;
     Vec v(clamp(c(0)/c(2),0,w) - c(0)/c(2), clamp(c(1)/c(2),0,h) - c(1)/c(2));
     return sqrt( v.qnorm() );
 }
@@ -155,7 +180,7 @@ const std::pair<int,int> reg2corners[3*3] = {
 /// Return quadrant of center wrt rectangle [0,w]x[0,h].
 std::pair<int,int> Polarizer::region(int w, int h) const {
     std::pair<int,int> p = std::make_pair(1,1);
-    Vec d = c(2)*c; // d = (c(0)/c(2),c(1)/c(2),1)*c(2)^2
+    Vec d = c(2)*c;
     if(d(0)<=0)      p.first = 0;
     if(d(0)>=w*d(2)) p.first = 2;
     if(d(1)<=0)      p.second = 0;
@@ -166,14 +191,15 @@ std::pair<int,int> Polarizer::region(int w, int h) const {
 /// Return min/max radius in \a r and \a R and min/max angle in \a t and \a T.
 Polarizer::Polarizer(const Vec& center, int w, int h)
 : c(center) {
-    r = R = dist_rect(w, h);
     std::pair<int,int> reg = region(w, h);
     rotate = (reg.first==2) || (reg.first==1 && reg.second==2);
     std::pair<double,double> pts[4] =
         {std::make_pair(0.,0.), std::make_pair(w*1.,0.),
          std::make_pair(w*1.,h*1.), std::make_pair(0.,h*1.)};
+    r = R = dist_rect(w, h);
     for(int i=0; i<4; i++) {
         std::pair<double,double> rhoTheta = polar(pts[i].first, pts[i].second);
+        if(r > rhoTheta.first) r = rhoTheta.first;
         if(R < rhoTheta.first) R = rhoTheta.first;
         if(i == reg2corners[3*reg.second+reg.first].first)
             t = rhoTheta.second;
@@ -222,14 +248,20 @@ static void inter_mod_2pi(double& t1, double& T1, double t2, double T2,
 }
 
 /// Restrict angle interval by epipolar lines in \a polR transferred from \a F.
+/// If the center of \c this is at infinity, angle -> signed distance to O.
 void Polarizer::restrict_angles(const Polarizer& polR, const Mat& F) {
     std::pair<double,double> p;
-    bool lessPi = (polR.T <= polR.t+M_PI);
     p = polR.transfer_angle(*this, polR.t, &F);
-    double t2 = atan2(p.second, p.first);
+    double t2 = inf()? -c(1)*p.first+c(0)*p.second: atan2(p.second,p.first);
     p = polR.transfer_angle(*this, polR.T, &F);
-    double T2 = atan2(p.second, p.first);
-    inter_mod_2pi(t, T, t2, T2, lessPi);
+    double T2 = inf()? -c(1)*p.first+c(0)*p.second: atan2(p.second,p.first);
+    if(inf()) {
+        if(t2>T2)
+            std::swap(t2,T2);
+        if(t<t2) t = t2;
+        if(T>T2) T = T2;
+    } else
+        inter_mod_2pi(t, T, t2, T2, (polR.T <= polR.t+M_PI));
 }
 
 /// Apply mirror to each line.
@@ -266,12 +298,16 @@ void Polarizer::pullback(int w, int h, std::pair<double,double>*& pb,
                          const Polarizer& pol, const Mat* F) const {
     pb = new std::pair<double,double>[w*h];
     std::pair<double,double>* p = pb;
-    double deltaT = 1/pol.R;
+    double deltaT = pol.inf()? 1: 1/pol.R;
+    std::pair<double,double> p0=std::make_pair(c(0)/c(2),c(1)/c(2));
     for(int y=0; y<h; y++) {
         double theta=pol.t+y*deltaT;
         std::pair<double,double> cossin = pol.transfer_angle(*this, theta, F);
         double dx=cossin.first, dy=cossin.second;
-        std::pair<double,double> p0=std::make_pair(c(0)/c(2),c(1)/c(2));
+        if(inf()) {
+            p0 = cossin;
+            dx=c(0); dy=c(1);
+        }
         for(int x=0; x<w; x++) {
             double rho=r+x;
             *p++ = std::make_pair(p0.first+rho*dx, p0.second+rho*dy);
