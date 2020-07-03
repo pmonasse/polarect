@@ -26,6 +26,7 @@
 
 #include "libImageIO/image_io.hpp"
 #include "libOrsa/eval_model.hpp"
+#include "libOrsa/fundamental_model.hpp"
 extern "C" {
 #include "libSplinter/splinter.h"
 }
@@ -81,26 +82,29 @@ Image<RGBColor>* sample(const Image<RGBColor>& im, int w, int h,
 int main(int argc, char **argv) {
     double precision=0;
     float fSiftRatio=0.6f;
+    std::string fileMatchesIn, fileMatchesOut;
+    bool findInliers;
 
     CmdLine cmd;
     cmd.add( make_option('s',fSiftRatio, "sift")
              .doc("SIFT distance ratio of descriptors") );
-    cmd.add( make_switch('r', "read")
-             .doc("Read file of matches allMatches.txt, do not use SIFT"));
+    cmd.add( make_option('r',fileMatchesIn, "read")
+             .doc("Read file of matches, do not use SIFT"));
+    cmd.add( make_option('w',fileMatchesOut, "write")
+             .doc("Write file of inlier matches from SIFT algorithm"));
+    cmd.add( make_option('i',findInliers, "inliers")
+             .doc("Find inlier matches from file of matches (with option -r)"));
     try {
         cmd.process(argc, argv);
     } catch(const std::string& s) {
         std::cerr << s << std::endl;
         return 1;
     }
-    if(argc!=5 && argc!=7) {
+    if(argc!=5) {
         std::cerr << "Usage: " << argv[0] << " [options] imgInA imgInB "
-                  << "allMatches.txt orsaMatches.txt [imgOutA imgOutB]\n"
+                  << "imgOutA imgOutB\n"
                   << "- imgInA, imgInB: two input images (JPG or PNG format)\n"
-                  << "- allMatches.txt: output (input if option -r) text file"
-                  << "of format \"x1 y1 x2 y2\"\n"
-                  << "- orsaMatches.txt: output, but only with inliers.\n"
-                  << "- imgOutA, imgOutB (optional): output rectified image\n"
+                  << "- imgOutA, imgOutB: output rectified images\n"
                   << "\tOptions:\n" << cmd;
         return 1;
     }
@@ -115,43 +119,56 @@ int main(int argc, char **argv) {
     Image<unsigned char> image1Gray, image2Gray;
     libs::convertImage(image1, &image1Gray);
     libs::convertImage(image2, &image2Gray);
+    int w1 = image1Gray.Width(), h1 = image1Gray.Height();
+    int w2 = image2Gray.Width(), h2 = image2Gray.Height();
 
     // Find matches with SIFT or read correspondence file
     std::vector<Match> matchings;
-    if(cmd.used('r')) {
-        if(Match::loadMatch(argv[3], matchings))
-            std::cout << "Read " <<matchings.size()<< " matches" <<std::endl;
-        else {
-            std::cerr << "Failed reading matches from " << argv[3] <<std::endl;
-            return 1;
-        }
-    } else
+    if(fileMatchesIn.empty())
         SIFT(image1Gray, image2Gray, matchings, fSiftRatio);
-    rm_duplicates(matchings); // Remove duplicates (frequent with SIFT)
-
-    // Save match files
-    if(! cmd.used('r') && ! Match::saveMatch(argv[3], matchings)) {
-        std::cerr << "Failed saving matches into " <<argv[3] <<std::endl;
+    else if(Match::loadMatch(fileMatchesIn.c_str(), matchings))
+        std::cout << "Read " <<matchings.size()<< " matches" <<std::endl;
+    else {
+        std::cerr<<"Failed reading matches from "<<fileMatchesIn<<std::endl;
         return 1;
     }
 
     // Estimation of fundamental matrix with ORSA
     libNumerics::matrix<double> F(3,3);
     std::vector<int> vec_inliers;
-    int w1 = image1Gray.Width(), h1 = image1Gray.Height();
-    int w2 = image2Gray.Width(), h2 = image2Gray.Height();
-    bool ok = orsa::orsa_fundamental(matchings,w1,h1,w2,h2,precision,ITER_ORSA,
-                                     F, vec_inliers);
-    if(ok)
-        std::cout << "F=" << F <<std::endl;
+    bool ok=true;
+    if(fileMatchesIn.empty() || findInliers) {
+        rm_duplicates(matchings); // Remove duplicates (frequent with SIFT)
+        if((ok=orsa::orsa_fundamental(matchings,w1,h1,w2,h2,precision,ITER_ORSA,
+                                      F, vec_inliers))) {
+            std::vector<Match> good_match;
+            std::vector<int>::const_iterator it = vec_inliers.begin();
+            for(; it != vec_inliers.end(); it++)
+                good_match.push_back(matchings[*it]);
+            matchings = good_match;
+        }
+    } else {
+        orsa::FundamentalModel model(matchings);
+        std::vector<orsa::ModelEstimator::Model> models;
+        std::vector<int> indices;
+        int i=0;
+        for(std::vector<Match>::const_iterator it=matchings.begin();
+            it!=matchings.end(); ++it)
+            indices.push_back(i++);
+        model.Fit(indices, &models);
+        if((ok = (models.size()==1)))
+            F = models.front();
+    }   
+    if(! ok) {
+        std::cerr << "Failed to estimate the fundamental matrix" << std::endl;
+        return 1;
+    }
+    std::cout << "F=" << F <<std::endl;
 
     // Save inliers
-    std::vector<Match> good_match;
-    std::vector<int>::const_iterator it = vec_inliers.begin();
-    for(; it != vec_inliers.end(); it++)
-        good_match.push_back(matchings[*it]);
-    if(! Match::saveMatch(argv[4], good_match)) {
-        std::cerr << "Failed saving matches into " <<argv[4] <<std::endl;
+    if(! fileMatchesOut.empty() &&
+       ! Match::saveMatch(fileMatchesOut.c_str(), matchings)) {
+        std::cerr << "Failed saving matches into " <<fileMatchesOut <<std::endl;
         return 1;
     }
 
@@ -160,27 +177,20 @@ int main(int argc, char **argv) {
     //    F.read(coeff);
     // XXXXXXXXXXXX DEBUG
     libNumerics::vector<double> eL(3), eR(3);
-    orientedEpipoles(good_match, F, eL, eR);
+    orientedEpipoles(matchings, F, eL, eR);
     std::pair<double,double> *pullbackL, *pullbackR;
     polarect(F, eL, eR, w1, h1, w2, h2, pullbackL, pullbackR);
 
-    if(argc>6) { // Output images
-        const char* fileL = argv[5];
-        const char* fileR = argv[6];
-        Image<RGBColor>* out1 = sample(image1, w1, h1, pullbackL);
-        Image<RGBColor>* out2 = sample(image2, w2, h2, pullbackR);
-        libs::WriteImage(fileL, *out1);
-        libs::WriteImage(fileR, *out2);
-        delete out1;
-        delete out2;
-    }
+    const char* fileL = argv[3];
+    const char* fileR = argv[4];
+    Image<RGBColor>* out1 = sample(image1, w1, h1, pullbackL);
+    Image<RGBColor>* out2 = sample(image2, w2, h2, pullbackR);
+    libs::WriteImage(fileL, *out1);
+    libs::WriteImage(fileR, *out2);
+    delete out1;
+    delete out2;
     delete [] pullbackL;
     delete [] pullbackR;
-
-    if(! ok) {
-        std::cerr << "Failed to estimate the fundamental matrix" << std::endl;
-        return 1;
-    }
 
     return 0;
 }
