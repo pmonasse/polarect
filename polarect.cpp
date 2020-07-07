@@ -23,13 +23,28 @@ static Vec leftEpipole(const Mat& F) {
     return (e/sqrt(norm));
 }
 
+/// Normalize point:
+/// - if finite, set e(2) to +1/-1 (sign unchanged)
+/// - if infinite (too far from O), set e(2) to 0 and set norm to 1.
+/// The point is considered infinite if its distance to a 1000x1000 square is
+/// large enough to provoke an error at most 1 pixel on the opposite side if
+/// sent to infinity.
+static void normalize_epipole(Vec& e) {
+    const double TH=1.0/(1000*1000);
+    if(e(2)*e(2) < TH*TH*(e(0)*e(0)+e(1)*e(1))) {
+        if(e(0)<0)
+            e = -e;
+        e(2) = 0;
+        e /= sqrt( e.qnorm() );
+    } else
+        e /= fabs(e(2));
+}
+
 /// Return epipoles of F oriented such that
 /// eL x m_i(L) ~+ F m_i(R) and eR x m_i(R) ~+ Ft m_i(L)
 /// when m_i(L) and m_i(R) have positive 3rd coordinate (typically 1).
-bool orientedEpipoles(const std::vector<Match>& m,
-                      const libNumerics::matrix<double>& F,
-                      libNumerics::vector<double>& eL,
-                      libNumerics::vector<double>& eR) {
+bool orientedEpipoles(const std::vector<Match>& m, const Mat& F,
+                      Vec& eL, Vec& eR) {
     eL = leftEpipole(F);
     eR = leftEpipole(F.t());
     if(eL(2)<0) eL = -eL;
@@ -44,6 +59,8 @@ bool orientedEpipoles(const std::vector<Match>& m,
     }
     if(nL<0) eL=-eL;
     if(nR<0) eR=-eR;
+    normalize_epipole(eL);
+    normalize_epipole(eR);
     if((size_t)abs(nL)!=m.size() || (size_t)abs(nR)!=m.size())
         std::cout << "orientEpipoles: "
                   << m.size()-(size_t)abs(nL) << ',' << m.size()-(size_t)abs(nR)
@@ -180,6 +197,11 @@ const std::pair<int,int> reg2corners[3*3] = {
 /// Return quadrant of center wrt rectangle [0,w]x[0,h].
 std::pair<int,int> Polarizer::region(int w, int h) const {
     std::pair<int,int> p = std::make_pair(1,1);
+    if(inf()) {
+        p.first = 0;
+        p.second = (c(1)>=0)? 0: 2;
+        return p;
+    }
     Vec d = c(2)*c;
     if(d(0)<=0)      p.first = 0;
     if(d(0)>=w*d(2)) p.first = 2;
