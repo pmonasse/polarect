@@ -68,34 +68,31 @@ bool orientedEpipoles(const std::vector<Match>& m, const Mat& F,
     return (nL!=0 && nR!=0);
 }
 
-/// Transform image in rectangle [0,w]x[0,h] to polar.
-class Polarizer {
-    Vec c; ///< Center of polar transform (3-vector, homogeneous coordinates)
-    double r, R; ///< Min/max radii
-    double t, T; ///< Min/max angles
-    bool rotate; ///< Image needs rotation
+/// Constructor
+Polarectifyer::Polarectifyer(const Mat& F0, const Vec& eL, const Vec& eR,
+                             int wL, int hL, int wR, int hR)
+: polL(eL,wL,hL), polR(eR,wR,hR), F(F0), pbMapL(0), pbMapR(0) {
+    std::cout << "eL =" << eL << std::endl;
+    std::cout << "eR =" << eR << std::endl;
+    polL.restrict_angles(polR, F);
+    polR.restrict_angles(polL, F.t());
 
-    bool inf() const { return c(2)==0; } ///< Center at infinity?
-    double dist_rect(int w, int h) const;
-    std::pair<int,int> region(int w, int h) const;
-    std::pair<double,double> transfer_angle(const Polarizer& P,
-                                            double theta, const Mat* F) const;
-    void pullback(int w, int h, std::pair<double,double>*& pb,
-                  const Polarizer& pol, const Mat* F) const;
-public:
-    Polarizer(const Vec& center, int w, int h);
-    int width() const;
-    int height() const;
-    std::pair<double,double> polar(double x, double y) const;
-    void restrict_angles(const Polarizer& polR, const Mat& F);
+    wL=widthL(); wR=widthR(); hL=height(); // Same height of polar images
+    std::cout << "ImageL: " << wL << 'x' << hL << std::endl;
+    std::cout << "ImageR: " << wR << 'x' << hL << std::endl;
+    polL.pullback_map(wL, hL, pbMapL);
+    polR.pullback_map(wR, hL, pbMapR, polL, F.t());
+}
 
-    /// Generate pullback map to transform image to polar.
-    void gen_pullback(int w, int h, std::pair<double,double>*& p) const
-    { pullback(w,h,p, *this, 0); }
-    void gen_pullback(int w, int h, std::pair<double,double>*& p,
-                      const Polarizer& pol, const Mat& F) const
-    { pullback(w,h,p, pol, &F); }
-};
+/// Destructor
+Polarectifyer::~Polarectifyer() {
+    delete [] pbMapL;
+    delete [] pbMapR;
+}
+
+const std::pair<double,double>* Polarectifyer::pullback_map(bool left) {
+    return (left? pbMapL: pbMapR);
+}
 
 /// Polar transform of vector (x,y). Output is (rho,theta).
 /// Special case: center at infinity, direction of line (c(0),c(1)).
@@ -338,24 +335,4 @@ void Polarizer::pullback(int w, int h, std::pair<double,double>*& pb,
     if(pol.rotate)
         mirrory(pb, w, h);
     restore_orientation(pb, w, h);
-}
-
-void polarect(const Mat& F, const Vec& eL, const Vec& eR,
-              int& wL, int& hL, int& wR, int& hR,
-              std::pair<double,double>*& pullbackL,
-              std::pair<double,double>*& pullbackR) {
-    std::cout << "eL =" << eL << std::endl;
-    std::cout << "eR =" << eR << std::endl;
-    Polarizer polL(eL, wL, hL);
-    Polarizer polR(eR, wR, hR);
-    polL.restrict_angles(polR, F);
-    polR.restrict_angles(polL, F.t());
-
-    wL = polL.width();
-    wR = polR.width();
-    hL = hR = polL.height(); // Same height of polar images
-    std::cout << "ImageL: " << wL << 'x' << hL << std::endl;
-    std::cout << "ImageR: " << wR << 'x' << hR << std::endl;
-    polL.gen_pullback(wL, hL, pullbackL);
-    polR.gen_pullback(wR, hR, pullbackR, polL, F.t());
 }

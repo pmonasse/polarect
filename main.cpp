@@ -178,19 +178,18 @@ int main(int argc, char **argv) {
     // XXXXXXXXXXXX DEBUG
     libNumerics::vector<double> eL(3), eR(3);
     orientedEpipoles(matchings, F, eL, eR);
-    std::pair<double,double> *pullbackL, *pullbackR;
-    polarect(F, eL, eR, w1, h1, w2, h2, pullbackL, pullbackR);
+    Polarectifyer pol(F, eL, eR, w1, h1, w2, h2);
 
     const char* fileL = argv[3];
     const char* fileR = argv[4];
-    Image<RGBColor>* out1 = sample(image1, w1, h1, pullbackL);
-    Image<RGBColor>* out2 = sample(image2, w2, h2, pullbackR);
+    Image<RGBColor>* out1 = sample(image1, pol.widthL(), pol.height(),
+                                   pol.pullback_map(true));
+    Image<RGBColor>* out2 = sample(image2, pol.widthR(), pol.height(),
+                                   pol.pullback_map(false));
     libs::WriteImage(fileL, *out1);
     libs::WriteImage(fileR, *out2);
     delete out1;
     delete out2;
-    delete [] pullbackL;
-    delete [] pullbackR;
 
     return 0;
 }
