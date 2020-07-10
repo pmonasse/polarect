@@ -68,32 +68,6 @@ bool orientedEpipoles(const std::vector<Match>& m, const Mat& F,
     return (nL!=0 && nR!=0);
 }
 
-/// Constructor
-Polarectifyer::Polarectifyer(const Mat& F0, const Vec& eL, const Vec& eR,
-                             int wL, int hL, int wR, int hR)
-: polL(eL,wL,hL), polR(eR,wR,hR), F(F0), pbMapL(0), pbMapR(0) {
-    std::cout << "eL =" << eL << std::endl;
-    std::cout << "eR =" << eR << std::endl;
-    polL.restrict_angles(polR, F);
-    polR.restrict_angles(polL, F.t());
-
-    wL=widthL(); wR=widthR(); hL=height(); // Same height of polar images
-    std::cout << "ImageL: " << wL << 'x' << hL << std::endl;
-    std::cout << "ImageR: " << wR << 'x' << hL << std::endl;
-    polL.pullback_map(wL, hL, pbMapL);
-    polR.pullback_map(wR, hL, pbMapR, polL, F.t());
-}
-
-/// Destructor
-Polarectifyer::~Polarectifyer() {
-    delete [] pbMapL;
-    delete [] pbMapR;
-}
-
-const std::pair<double,double>* Polarectifyer::pullback_map(bool left) {
-    return (left? pbMapL: pbMapR);
-}
-
 /// Polar transform of vector (x,y). Output is (rho,theta).
 /// Special case: center at infinity, direction of line (c(0),c(1)).
 /// Then theta is the (signed) distance from (0,0) to the line through (x,y) and
@@ -132,12 +106,13 @@ int Polarizer::height() const {
     return h;
 }
 
-/// Transfer epipolar line at angle \a theta with F.
-/// Return cos/sin of corresponding epipolar line orientation (wrt center of P).
-/// If center of \c this is at infinity, \a theta is the signed distance to O.
-/// If center of \a P    is at infinity, return the projection of O on line.
-std::pair<double,double> Polarizer::transfer_angle(const Polarizer& P,
-                                                   double theta,
+/// Transfer epipolar line indexed by \a theta with \a F to view \a P.
+/// Index \a theta can be an angle (finite center) or signed distance to O
+/// (center at infinity). The result is cos/sin of line direction (center of
+/// \a P finite) or projection of O on line (center of \a P at infinity).
+/// The current object is in the left view of \a F and \a P in the right view.
+std::pair<double,double> Polarizer::transfer_theta(double theta,
+                                                   const Polarizer& P,
                                                    const Mat* F) const {
     Vec p(3);
     if(inf()) { // center of this at infinity
@@ -270,9 +245,9 @@ static void inter_mod_2pi(double& t1, double& T1, double t2, double T2,
 /// If the center of \c this is at infinity, angle -> signed distance to O.
 void Polarizer::restrict_angles(const Polarizer& polR, const Mat& F) {
     std::pair<double,double> p;
-    p = polR.transfer_angle(*this, polR.t, &F);
+    p = polR.transfer_theta(polR.t, *this, &F);
     double t2 = inf()? -c(1)*p.first+c(0)*p.second: atan2(p.second,p.first);
-    p = polR.transfer_angle(*this, polR.T, &F);
+    p = polR.transfer_theta(polR.T, *this, &F);
     double T2 = inf()? -c(1)*p.first+c(0)*p.second: atan2(p.second,p.first);
     if(inf()) {
         if(t2>T2)
@@ -310,18 +285,17 @@ static void restore_orientation(std::pair<double,double>* map, int w, int h) {
         mirrorx(map, w, h);
 }
 
-/// Generate pullback map to transform image to polar (x=radius,y=angle).
+/// Generate pullback map to transform image to polar (x=radius,y=theta).
 /// When pol!=this and F!=0, the angles are regularly sampled in the other image
-/// of the stereo pair and transferred through the epipolar matrix F. 
-void Polarizer::pullback(int w, int h, std::pair<double,double>*& pb,
-                         const Polarizer& pol, const Mat* F) const {
-    pb = new std::pair<double,double>[w*h];
-    std::pair<double,double>* p = pb;
+/// of the stereo pair and transferred through the fundamental matrix F.
+std::pair<double,double>* Polarizer::pullback(int w, int h,
+    const Polarizer& pol, const Mat* F) const {
+    std::pair<double,double> *pb=new std::pair<double,double>[w*h], *p=pb;
     double deltaT = pol.inf()? 1: 1/pol.R;
     std::pair<double,double> p0=std::make_pair(c(0)/c(2),c(1)/c(2));
     for(int y=0; y<h; y++) {
         double theta=pol.t+y*deltaT;
-        std::pair<double,double> cossin = pol.transfer_angle(*this, theta, F);
+        std::pair<double,double> cossin = pol.transfer_theta(theta, *this, F);
         double dx=cossin.first, dy=cossin.second;
         if(inf()) {
             p0 = cossin;
@@ -335,4 +309,32 @@ void Polarizer::pullback(int w, int h, std::pair<double,double>*& pb,
     if(pol.rotate)
         mirrory(pb, w, h);
     restore_orientation(pb, w, h);
+    return pb;
+}
+
+/// Constructor
+Polarectifyer::Polarectifyer(const Mat& F0, const Vec& eL, const Vec& eR,
+                             int wL, int hL, int wR, int hR)
+: polL(eL,wL,hL), polR(eR,wR,hR), F(F0), pbMapL(0), pbMapR(0) {
+    std::cout << "eL =" << eL << std::endl;
+    std::cout << "eR =" << eR << std::endl;
+    polL.restrict_angles(polR, F);
+    polR.restrict_angles(polL, F.t());
+
+    wL=widthL(); wR=widthR(); hL=height(); // Same height of polar images
+    std::cout << "ImageL: " << wL << 'x' << hL << std::endl;
+    std::cout << "ImageR: " << wR << 'x' << hL << std::endl;
+    pbMapL = polL.pullback_map(wL, hL);
+    pbMapR = polR.pullback_map(wR, hL, polL, F.t());
+}
+
+/// Destructor
+Polarectifyer::~Polarectifyer() {
+    delete [] pbMapL;
+    delete [] pbMapR;
+}
+
+/// Return pullback map of left or right rectified view.
+const std::pair<double,double>* Polarectifyer::pullback_map(bool left) {
+    return (left? pbMapL: pbMapR);
 }

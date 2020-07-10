@@ -21,9 +21,9 @@ class Polarizer {
     bool inf() const { return c(2)==0; } ///< Center at infinity?
     double dist_rect(int w, int h) const;
     std::pair<int,int> region(int w, int h) const;
-    std::pair<double,double> transfer_angle(const Polarizer& P,
-        double theta, const libNumerics::matrix<double>* F) const;
-    void pullback(int w, int h, std::pair<double,double>*& pb,
+    std::pair<double,double> transfer_theta(double theta,
+        const Polarizer& P, const libNumerics::matrix<double>* F) const;
+    std::pair<double,double>* pullback(int w, int h,
         const Polarizer& pol, const libNumerics::matrix<double>* F) const;
 public:
     Polarizer(const libNumerics::vector<double>& center, int w, int h);
@@ -34,11 +34,11 @@ public:
                          const libNumerics::matrix<double>& F);
 
     /// Generate pullback map to transform image to polar.
-    void pullback_map(int w, int h, std::pair<double,double>*& p) const
-    { pullback(w,h,p, *this, 0); }
-    void pullback_map(int w, int h, std::pair<double,double>*& p,
+    std::pair<double,double>* pullback_map(int w, int h) const
+    { return pullback(w,h,*this, 0); }
+    std::pair<double,double>* pullback_map(int w, int h,
         const Polarizer& pol, const libNumerics::matrix<double>& F) const
-    { pullback(w,h,p, pol, &F); }
+    { return pullback(w,h,pol, &F); }
 };
 
 class Polarectifyer {
