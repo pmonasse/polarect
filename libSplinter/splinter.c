@@ -427,7 +427,7 @@ void splinter(double* out, double x, double y, splinter_plan_t plan) {
     for(int c=0; c<plan.c; c++)
         out[c]=0;
     int inside = shift<=x && x<=plan.w-1-shift && shift<=y && y<=plan.h-1-shift;
-    //inside=1; // Uncomment to extrapolate
+    inside=1; // Uncomment to extrapolate
     if(! inside)
         return;
     // Evaluate the kernel
