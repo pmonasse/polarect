@@ -47,6 +47,9 @@ inline RGBColor clip_col(double c[3]) {
     return RGBColor(clip_col(c[0]), clip_col(c[1]), clip_col(c[2]));
 }
 
+/// Transform image based on \a pullback.
+/// Pixels of the target image, of size wxh, are taken from \a im according to
+/// the \a pullback map.
 Image<RGBColor>* sample(const Image<RGBColor>& im, int w, int h,
                         const std::pair<double,double>* pullback) {
     size_t s = im.Width()*im.Height();
@@ -176,10 +179,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // XXXXXXXXXXXX DEBUG
-    //    double coeff[3*3] = { -3.87567e-06, 0.000195535, -0.0359479,  -0.000200956, -1.64802e-06, 0.0596173,  0.0380931, -0.0340711, -4.77871};
-    //    F.read(coeff);
-    // XXXXXXXXXXXX DEBUG
     libNumerics::vector<double> eL(3), eR(3);
     orientedEpipoles(matchings, F, eL, eR);
     Polarectifyer pol(F, eL, eR, w1, h1, w2, h2);
