@@ -20,6 +20,7 @@ add_subdirectory(third_party/sift_anatomy)
 
 # Executable demo to estimate the fundamental matrix from SIFT matches
 add_executable(polarect
+               draw.cpp draw.h
                polarect.cpp polarect.h
                main.cpp
                siftMatch.hpp)

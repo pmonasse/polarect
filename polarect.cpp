@@ -89,6 +89,30 @@ std::pair<double,double> Polarizer::polar(double x, double y) const {
     return std::make_pair(rho,theta);
 }
 
+/// Convert rho to abscissa of rectified image.
+double Polarizer::sample_rho(double rho) const {
+    rho -= r;
+    if(rotate)
+       rho = width()-1-rho;
+    return rho;
+}
+
+/// Convert theta to ordinate of rectified image.
+double Polarizer::sample_theta(double theta) const {
+    if(!inf()) { // Handle theta modulo 2*pi
+        if(theta<t)
+            theta += 2*M_PI;
+        else if(theta>T)
+            theta -= 2*M_PI;
+    }
+    theta -= t;
+    if(! inf()) // Finite center: delta_theta = 1/R
+        theta *= R;
+    if(rotate)
+        theta = height()-1-theta;
+    return theta;
+}
+
 /// Width of polar image with rho in [r,R].
 int Polarizer::width() const {
     int w = 0;
@@ -273,7 +297,7 @@ static void mirrory(std::pair<double,double>* map, int w, int h) {
 }
 
 /// Perform x-mirror of pullback \a map if required to preserve orientation.
-static void restore_orientation(std::pair<double,double>* map, int w, int h) {
+static bool restore_orientation(std::pair<double,double>* map, int w, int h) {
     std::pair<double,double> pp1 = map[(  h/3)*w+(  w/3)];
     std::pair<double,double> pp2 = map[(  h/3)*w+(2*w/3)];
     std::pair<double,double> pp3 = map[(2*h/3)*w+(  w/3)];
@@ -281,15 +305,17 @@ static void restore_orientation(std::pair<double,double>* map, int w, int h) {
                                                   pp2.second-pp1.second);
     std::pair<double,double> v13 = std::make_pair(pp3.first-pp1.first,
                                                   pp3.second-pp1.second);
-    if(v12.first*v13.second<v12.second*v13.first)
+    bool rotate = (v12.first*v13.second<v12.second*v13.first);
+    if(rotate)
         mirrorx(map, w, h);
+    return rotate;
 }
 
 /// Generate pullback map to transform image to polar (x=radius,y=theta).
 /// When pol!=this and F!=0, the angles are regularly sampled in the other image
 /// of the stereo pair and transferred through the fundamental matrix F.
 std::pair<double,double>* Polarizer::pullback(int w, int h,
-    const Polarizer& pol, const Mat* F) const {
+    const Polarizer& pol, const Mat* F) {
     std::pair<double,double> *pb=new std::pair<double,double>[w*h], *p=pb;
     double deltaT = pol.inf()? 1: 1/pol.R;
     std::pair<double,double> p0=std::make_pair(c(0)/c(2),c(1)/c(2));
@@ -308,7 +334,7 @@ std::pair<double,double>* Polarizer::pullback(int w, int h,
     }
     if(pol.rotate)
         mirrory(pb, w, h);
-    restore_orientation(pb, w, h);
+    rotate = restore_orientation(pb, w, h);
     return pb;
 }
 
@@ -335,6 +361,27 @@ Polarectifyer::~Polarectifyer() {
 }
 
 /// Return pullback map of left or right rectified view.
-const std::pair<double,double>* Polarectifyer::pullback_map(bool left) {
+const std::pair<double,double>* Polarectifyer::pullback_map(bool left) const {
     return (left? pbMapL: pbMapR);
+}
+
+/// Transform point from original image to mapped point in rectified image.
+void Polarectifyer::pushforward(std::pair<double,double>& xy, bool left) const {
+    const Polarizer& pol = (left? polL: polR);
+    double theta=0;
+    if(! left) { // Handle non-uniform theta sampling in right image
+        Vec p(xy.first, xy.second, 1.);
+        p = F*p;
+        if(polL.inf())
+            theta = p(2)/(p(0)*polL.c(1)-p(1)*polL.c(0));
+        else {
+            if(polL.c(2)<0) p = -p;
+            theta = atan2(-p(0),p(1));
+        }
+    }
+    xy = pol.polar(xy.first, xy.second);
+    if(! left)
+        xy.second = theta;
+    xy.first = pol.sample_rho(xy.first);
+    xy.second = polL.sample_theta(xy.second);
 }

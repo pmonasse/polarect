@@ -34,6 +34,7 @@ extern "C" {
 #include "cmdLine.h"
 #include "siftMatch.hpp"
 #include "polarect.h"
+#include "draw.h"
 
 /// Number of random samples in ORSA
 static const int ITER_ORSA=10000;
@@ -60,7 +61,7 @@ Image<RGBColor>* sample(const Image<RGBColor>& im, int w, int h,
         }
 
     splinter_plan_t plan = splinter_plan(in, im.Width(), im.Height(), 3,
-                                         3, BOUNDARY_PERIODIC, 1.0e-1, 1);
+                                         3, BOUNDARY_HSYMMETRIC, 1.0e-1, 1);
     delete [] in;
     Image<RGBColor>* out = new Image<RGBColor>(w,h,WHITE);
     RGBColor *o=out->data();
@@ -83,7 +84,8 @@ int main(int argc, char **argv) {
     double precision=0;
     float fSiftRatio=0.6f;
     std::string fileMatchesIn, fileMatchesOut;
-    bool findInliers;
+    bool findInliers=false;
+    bool annotate=false;
 
     CmdLine cmd;
     cmd.add( make_option('s',fSiftRatio, "sift")
@@ -94,6 +96,8 @@ int main(int argc, char **argv) {
              .doc("Write file of inlier matches from SIFT algorithm"));
     cmd.add( make_option('i',findInliers, "inliers")
              .doc("Find inlier matches from file of matches (with option -r)"));
+    cmd.add( make_option('a',annotate, "annotate")
+             .doc("Draw annotations (guidelines and SIFT matches)"));
     try {
         cmd.process(argc, argv);
     } catch(const std::string& s) {
@@ -186,6 +190,12 @@ int main(int argc, char **argv) {
                                    pol.pullback_map(true));
     Image<RGBColor>* out2 = sample(image2, pol.widthR(), pol.height(),
                                    pol.pullback_map(false));
+    if(annotate) {
+        draw_guidelines(*out1, CYAN);
+        draw_sift(*out1, matchings, true, pol, RED);
+        draw_guidelines(*out2, CYAN);
+        draw_sift(*out2, matchings, false, pol, RED);
+    }
     libs::WriteImage(fileL, *out1);
     libs::WriteImage(fileR, *out2);
     delete out1;

@@ -12,6 +12,7 @@ bool orientedEpipoles(const std::vector<Match>& m,
 
 /// Transform image in rectangle [0,w]x[0,h] to polar.
 class Polarizer {
+    friend class Polarectifyer;
      /// Center of polar transform (3-vector, homogeneous coordinates)
     libNumerics::vector<double> c;
     double r, R; ///< Min/max radii
@@ -24,20 +25,22 @@ class Polarizer {
     std::pair<double,double> transfer_theta(double theta,
         const Polarizer& P, const libNumerics::matrix<double>* F) const;
     std::pair<double,double>* pullback(int w, int h,
-        const Polarizer& pol, const libNumerics::matrix<double>* F) const;
+        const Polarizer& pol, const libNumerics::matrix<double>* F);
 public:
     Polarizer(const libNumerics::vector<double>& center, int w, int h);
     int width() const;
     int height() const;
     std::pair<double,double> polar(double x, double y) const;
+    double sample_rho(double rho) const;
+    double sample_theta(double theta) const;
     void restrict_angles(const Polarizer& polR,
                          const libNumerics::matrix<double>& F);
 
     /// Generate pullback map to transform image to polar.
-    std::pair<double,double>* pullback_map(int w, int h) const
+    std::pair<double,double>* pullback_map(int w, int h)
     { return pullback(w,h,*this, 0); }
     std::pair<double,double>* pullback_map(int w, int h,
-        const Polarizer& pol, const libNumerics::matrix<double>& F) const
+        const Polarizer& pol, const libNumerics::matrix<double>& F)
     { return pullback(w,h,pol, &F); }
 };
 
@@ -55,7 +58,8 @@ public:
     int widthL() const { return polL.width(); }
     int widthR() const { return polR.width(); }
     int height() const { return polL.height(); }
-    const std::pair<double,double>* pullback_map(bool left);
+    const std::pair<double,double>* pullback_map(bool left) const;
+    void pushforward(std::pair<double,double>& xy, bool left) const;
 };
 
 #endif
