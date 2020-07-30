@@ -54,9 +54,9 @@ static Vec leftEpipole(const Mat& F) {
 static void normalize_epipole(Vec& e) {
     const double TH=1.0/(1000*1000);
     if(e(2)*e(2) < TH*TH*(e(0)*e(0)+e(1)*e(1))) {
-        if(e(0)<0)
-            e = -e;
         e(2) = 0;
+        if(e(0)<0 || (e(0)==0 && e(1)<0))
+            e = -e;
         e /= sqrt( e.qnorm() );
     } else
         e /= fabs(e(2));
@@ -100,7 +100,7 @@ std::pair<double,double> Polarizer::polar(double x, double y) const {
         rho   =  c(0)*x + c(1)*y;
         theta = -c(1)*x + c(0)*y;
     } else {
-        Vec v(x-c(0)/c(2), y-c(1)/c(2));
+        Vec v(x-c(0)*c(2), y-c(1)*c(2));
         rho = sqrt( v.qnorm() );
         theta = 0;
         if(rho>0) {
@@ -169,7 +169,7 @@ std::pair<double,double> Polarizer::transfer_theta(double theta,
         double dx=cos(theta), dy=sin(theta);
         if(! F)
             return std::make_pair(dx,dy);
-        p = Vec(c(0)+R*dx*c(2), c(1)+R*dy*c(2), c(2));
+        p = Vec(c(0)*c(2)+R*dx, c(1)*c(2)+R*dy, 1.0);
     }
     p = (*F)*p;
     if(P.inf()) {
@@ -177,7 +177,7 @@ std::pair<double,double> Polarizer::transfer_theta(double theta,
         return std::make_pair(-theta*P.c(1),theta*P.c(0));
     }
     p(2) = 0;
-    if(c(2)*P.c(2)<0) p = -p;
+    if(P.c(2)<0) p = -p;
     double rho = sqrt( p.qnorm() );
     return std::make_pair(p(1)/rho, -p(0)/rho);
 }
@@ -193,7 +193,7 @@ static double clamp(double x, double m, double M) {
 double Polarizer::dist_rect(int w, int h) const {
     if(inf())
         return 0;
-    Vec v(clamp(c(0)/c(2),0,w) - c(0)/c(2), clamp(c(1)/c(2),0,h) - c(1)/c(2));
+    Vec v(clamp(c(0)*c(2),0,w) - c(0)*c(2), clamp(c(1)*c(2),0,h) - c(1)*c(2));
     return sqrt( v.qnorm() );
 }
 
@@ -232,7 +232,7 @@ std::pair<int,int> Polarizer::region(int w, int h) const {
 Polarizer::Polarizer(const Vec& center, int w, int h)
 : c(center) {
     std::pair<int,int> reg = region(w, h);
-    rotate = (reg.first==2) || (reg.first==1 && reg.second==2);
+    rotate = (reg.first==2);
     std::pair<double,double> pts[4] =
         {std::make_pair(0.,0.), std::make_pair(w*1.,0.),
          std::make_pair(w*1.,h*1.), std::make_pair(0.,h*1.)};
@@ -340,7 +340,7 @@ std::pair<double,double>* Polarizer::pullback(int w, int h,
     const Polarizer& pol, const Mat* F) {
     std::pair<double,double> *pb=new std::pair<double,double>[w*h], *p=pb;
     double deltaT = pol.inf()? 1: 1/pol.R;
-    std::pair<double,double> p0=std::make_pair(c(0)/c(2),c(1)/c(2));
+    std::pair<double,double> p0=std::make_pair(c(0)*c(2),c(1)*c(2));
     for(int y=0; y<h; y++) {
         double theta=pol.t+y*deltaT;
         std::pair<double,double> cossin = pol.transfer_theta(theta, *this, F);
