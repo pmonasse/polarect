@@ -137,19 +137,13 @@ double Polarizer::sample_theta(double theta) const {
 
 /// Width of polar image with rho in [r,R].
 int Polarizer::width() const {
-    int w = 0;
-    for(double rho=r; rho<R; rho++)
-        ++w;
-    return w;
+    return (int)ceil(R-r);
 }
 
 /// Height of polar image with theta in [t,T].
 int Polarizer::height() const {
-    double deltaT = inf()? 1: 1/R;
-    int h = 0;
-    for(double theta=t; theta<T; theta+=deltaT)
-        ++h;
-    return h;
+    double inv_deltaT = inf()? 1: R;
+    return (int)ceil((T-t)*inv_deltaT);
 }
 
 /// Transfer epipolar line indexed by \a theta with \a F to view \a P.
