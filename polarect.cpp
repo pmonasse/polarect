@@ -3,7 +3,7 @@
  * @file polarect.cpp
  * @brief Image pair polar rectification.
  *
- * Copyright (c) 2020 Pascal Monasse
+ * Copyright (c) 2020-2021 Pascal Monasse
  * All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -255,7 +255,10 @@ static void inter_mod_2pi(double& t1, double& T1, double t2, double T2,
     assert(-M_PI<=t2 && t2<=M_PI);
     if(t2>T2)
         std::swap(t2,T2);
-    if(T2-t2<10*std::numeric_limits<double>::epsilon()) { // Full circle
+    if(t1+M_PI<T1) { // Full circle 1
+        t1=t2; T1=T2;
+    }
+    if(T2-t2<10*std::numeric_limits<double>::epsilon()) { // Full circle 2
         t2=t1; T2=T1;
     } else if(lessPi) {
         if(T2>t2+M_PI) {
@@ -284,6 +287,8 @@ static void inter_mod_2pi(double& t1, double& T1, double t2, double T2,
 /// Restrict angle interval by epipolar lines in \a polR transferred from \a F.
 /// If the center of \c this is at infinity, angle -> signed distance to O.
 void Polarizer::restrict_angles(const Polarizer& polR, const Mat& F) {
+    if(!polR.inf() && polR.T>polR.t+M_PI) // eR in image, spans all directions 
+        return;
     std::pair<double,double> p;
     p = polR.transfer_theta(polR.t, *this, &F);
     double t2 = inf()? -c(1)*p.first+c(0)*p.second: atan2(p.second,p.first);
@@ -295,7 +300,7 @@ void Polarizer::restrict_angles(const Polarizer& polR, const Mat& F) {
         if(t<t2) t = t2;
         if(T>T2) T = T2;
     } else
-        inter_mod_2pi(t, T, t2, T2, (polR.T <= polR.t+M_PI));
+        inter_mod_2pi(t, T, t2, T2, (polR.inf() || polR.T <= polR.t+M_PI));
 }
 
 /// Apply mirror to each line.
