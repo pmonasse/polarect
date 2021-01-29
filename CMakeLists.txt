@@ -18,7 +18,7 @@ add_subdirectory(libSplinter)
 add_subdirectory(libImageIO)
 add_subdirectory(third_party/sift_anatomy)
 
-# Executable demo to estimate the fundamental matrix from SIFT matches
+# Executable demo to rectify images
 add_executable(polarect
                draw.cpp draw.h
                polarect.cpp polarect.h
@@ -26,7 +26,13 @@ add_executable(polarect
                siftMatch.hpp)
 target_link_libraries(polarect Orsa Splinter ImageIO SiftAnatomy)
 
+add_library(Polarect polarect.cpp polarect.h)
+target_link_libraries(Polarect Orsa)
+UNIT_TEST(polarect Polarect)
+
 if(UNIX)
     set_target_properties(polarect PROPERTIES
+                          COMPILE_FLAGS "-std=c++98 -Wall -Wextra")
+    set_target_properties(polarect_test PROPERTIES
                           COMPILE_FLAGS "-std=c++98 -Wall -Wextra")
 endif()
