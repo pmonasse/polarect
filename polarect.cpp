@@ -20,6 +20,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// The algorithm is described in
+// F. Darmon & P. Monasse "The Polar Epipolar Rectification", IPOL
+// https://www.ipol.im/pub/pre/328/
+
 #include "polarect.h"
 #include <limits>
 #include <iostream>
@@ -45,6 +49,7 @@ static Vec leftEpipole(const Mat& F) {
     return (e/sqrt(norm));
 }
 
+/// Algorithm 7.
 /// Normalize point:
 /// - if finite, set e(2) to +1/-1 (sign unchanged)
 /// - if infinite (too far from O), set e(2) to 0 and set norm to 1.
@@ -62,6 +67,7 @@ static void normalize_epipole(Vec& e) {
         e /= fabs(e(2));
 }
 
+/// See Algorithm 2.
 /// Return epipoles of F oriented such that
 /// eL x m_i(L) ~+ F m_i(R) and eR x m_i(R) ~+ Ft m_i(L)
 /// when m_i(L) and m_i(R) have positive 3rd coordinate (typically 1).
@@ -98,14 +104,14 @@ std::pair<double,double> Polarizer::polar(double x, double y) const {
     double rho,theta;
     if(inf()) {
         rho   =  c(0)*x + c(1)*y;
-        theta = -c(1)*x + c(0)*y;
+        theta = -c(1)*x + c(0)*y; // Equation (25) case 1
     } else {
         Vec v(x-c(0)*c(2), y-c(1)*c(2));
         rho = sqrt( v.qnorm() );
         theta = 0;
         if(rho>0) {
             v /= rho;
-            theta = atan2(v(1),v(0));
+            theta = atan2(v(1),v(0)); // Equation (25) case 2
         }
     }
     return std::make_pair(rho,theta);
@@ -137,15 +143,16 @@ double Polarizer::sample_theta(double theta) const {
 
 /// Width of polar image with rho in [r,R].
 int Polarizer::width() const {
-    return (int)ceil(R-r);
+    return (int)ceil(R-r); // Equation (21)
 }
 
 /// Height of polar image with theta in [t,T].
 int Polarizer::height() const {
-    double inv_deltaT = inf()? 1: R;
-    return (int)ceil((T-t)*inv_deltaT);
+    double inv_deltaT = inf()? 1: R; // Equation (19)
+    return (int)ceil((T-t)*inv_deltaT); // Equation (20)
 }
 
+/// Algorithm 3. Table 1.
 /// Transfer epipolar line indexed by \a theta with \a F to view \a P.
 /// Index \a theta can be an angle (finite center) or signed distance to O
 /// (center at infinity). The result is cos/sin of line direction (center of
@@ -155,6 +162,7 @@ std::pair<double,double> Polarizer::transfer_theta(double theta,
                                                    const Polarizer& P,
                                                    const Mat* F) const {
     Vec p(3);
+    // Red vector of Table 1(a)
     if(inf()) { // center of this at infinity
         p = Vec(-theta*c(1), theta*c(0), 1.0); // Projection of O on line
         if(! F)
@@ -166,6 +174,7 @@ std::pair<double,double> Polarizer::transfer_theta(double theta,
         p = Vec(c(0)*c(2)+R*dx, c(1)*c(2)+R*dy, 1.0);
     }
     p = (*F)*p;
+    // Red vector of Table 1(b)
     if(P.inf()) {
         theta = p(2)/(p(0)*P.c(1)-p(1)*P.c(0));
         return std::make_pair(-theta*P.c(1),theta*P.c(0));
@@ -176,7 +185,7 @@ std::pair<double,double> Polarizer::transfer_theta(double theta,
     return std::make_pair(p(1)/rho, -p(0)/rho);
 }
 
-/// Clamp value of \a x in range [m,M]
+/// Clamp value of \a x in range [m,M]. Equation (13).
 static double clamp(double x, double m, double M) {
     if(x<m) return m;
     if(x>M) return M;
@@ -206,6 +215,7 @@ const std::pair<int,int> reg2corners[3*3] = {
     std::make_pair(0,3),std::make_pair(0,0),std::make_pair(2,1),
     std::make_pair(0,2),std::make_pair(3,2),std::make_pair(3,1)};
 
+/// Table T of Figure 3.
 /// Return quadrant of center wrt rectangle [0,w]x[0,h].
 std::pair<int,int> Polarizer::region(int w, int h) const {
     std::pair<int,int> p = std::make_pair(1,1);
@@ -215,13 +225,14 @@ std::pair<int,int> Polarizer::region(int w, int h) const {
         return p;
     }
     Vec d = c(2)*c;
-    if(d(0)<=0)      p.first = 0;
+    if(d(0)<=0)      p.first = 0; // Equation (14)
     if(d(0)>=w*d(2)) p.first = 2;
     if(d(1)<=0)      p.second = 0;
     if(d(1)>=h*d(2)) p.second = 2;
     return p;
 }
 
+/// Algorithm 4.
 /// Return min/max radius in \a r and \a R and min/max angle in \a t and \a T.
 Polarizer::Polarizer(const Vec& center, int w, int h)
 : c(center) {
@@ -245,6 +256,7 @@ Polarizer::Polarizer(const Vec& center, int w, int h)
     std::cout << "Region: (" <<reg.first << ',' <<reg.second << ')' <<std::endl;
 }
 
+/// Algorithm 5.
 /// Intersection of interval [t1,T1] with [t2,T2] or [T2,t2] modulo 2pi.
 /// The intervals on the circle are interpreted as width less than pi. 
 static void inter_mod_2pi(double& t1, double& T1, double t2, double T2,
@@ -317,6 +329,7 @@ static void mirrory(std::pair<double,double>* map, int w, int h) {
             std::swap(p[i],q[i]);
 }
 
+/// Algorithm 6.
 /// Perform x-mirror of pullback \a map if required to preserve orientation.
 static bool restore_orientation(std::pair<double,double>* map, int w, int h) {
     std::pair<double,double> pp1 = map[(  h/3)*w+(  w/3)];
@@ -326,7 +339,7 @@ static bool restore_orientation(std::pair<double,double>* map, int w, int h) {
                                                   pp2.second-pp1.second);
     std::pair<double,double> v13 = std::make_pair(pp3.first-pp1.first,
                                                   pp3.second-pp1.second);
-    bool rotate = (v12.first*v13.second<v12.second*v13.first);
+    bool rotate = (v12.first*v13.second<v12.second*v13.first); // Equation (18)
     if(rotate)
         mirrorx(map, w, h);
     return rotate;
