@@ -3,7 +3,7 @@
  * @file draw.cpp
  * @brief Draw annotations on image
  *
- * Copyright (c) 2020 Pascal Monasse
+ * Copyright (c) 2020-2021 Pascal Monasse
  * All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,6 +22,54 @@
 
 #include "draw.h"
 #include "polarect.h"
+
+extern "C" {
+#include "libSplinter/splinter.h"
+}
+
+inline unsigned char clip_col(double c) {
+    return (c<0.)? 0: (c>=255.)? 255: (unsigned char)c;
+}
+
+inline RGBColor clip_col(double c[3]) {
+    return RGBColor(clip_col(c[0]), clip_col(c[1]), clip_col(c[2]));
+}
+
+/// Transform image based on \a pullback.
+/// Pixels of the target image, of size wxh, are taken from \a im according to
+/// the \a pullback map.
+Image<RGBColor>* sample(const Image<RGBColor>& im, int w, int h,
+                        const std::pair<double,double>* pullback) {
+    size_t s = im.Width()*im.Height();
+    double* in = new double[s*3];
+    double* pix = in;
+    for(size_t y=0; y<im.Height(); y++)
+        for(size_t x=0; x<im.Width(); x++, pix++) {
+            RGBColor c = im(y,x);
+            pix[0*s] = c.r;
+            pix[1*s] = c.g;
+            pix[2*s] = c.b;
+        }
+
+    splinter_plan_t plan = splinter_plan(in, im.Width(), im.Height(), 3,
+                                         3, BOUNDARY_HSYMMETRIC, 1.0e-1, 1);
+    delete [] in;
+    Image<RGBColor>* out = new Image<RGBColor>(w,h,WHITE);
+    RGBColor *o=out->data();
+    const std::pair<double,double>* p = pullback;
+    for(int y=0; y<h; y++)
+        for(int x=0; x<w; x++, p++,o++) {
+            double x0 = p->first;
+            double y0 = p->second;
+            if(im.Contains(y0,x0)) {
+                double c[3];
+                splinter(c, x0, y0, plan);
+                *o = clip_col(c);
+            }
+        }
+    splinter_destroy_plan(plan);
+    return out;
+}
 
 /// Draw a dashed horizontal line in image.
 void draw_horizontal_dashed_line(Image<RGBColor>& im, int y, RGBColor c, 

@@ -3,7 +3,7 @@
  * @file main.cpp
  * @brief Image pair polar rectification.
  *
- * Copyright (c) 2020 Pascal Monasse
+ * Copyright (c) 2020-2021 Pascal Monasse
  * All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -28,61 +28,15 @@
 #include "libImageIO/image_io.hpp"
 #include "libOrsa/eval_model.hpp"
 #include "libOrsa/fundamental_model.hpp"
-extern "C" {
-#include "libSplinter/splinter.h"
-}
 
 #include "cmdLine.h"
 #include "siftMatch.hpp"
 #include "polarect.h"
+#include "sample.h"
 #include "draw.h"
 
 /// Number of random samples in ORSA
 static const int ITER_ORSA=10000;
-
-inline unsigned char clip_col(double c) {
-    return (c<0.)? 0: (c>=255.)? 255: (unsigned char)c;
-}
-
-inline RGBColor clip_col(double c[3]) {
-    return RGBColor(clip_col(c[0]), clip_col(c[1]), clip_col(c[2]));
-}
-
-/// Transform image based on \a pullback.
-/// Pixels of the target image, of size wxh, are taken from \a im according to
-/// the \a pullback map.
-Image<RGBColor>* sample(const Image<RGBColor>& im, int w, int h,
-                        const std::pair<double,double>* pullback) {
-    size_t s = im.Width()*im.Height();
-    double* in = new double[s*3];
-    double* pix = in;
-    for(size_t y=0; y<im.Height(); y++)
-        for(size_t x=0; x<im.Width(); x++, pix++) {
-            RGBColor c = im(y,x);
-            pix[0*s] = c.r;
-            pix[1*s] = c.g;
-            pix[2*s] = c.b;
-        }
-
-    splinter_plan_t plan = splinter_plan(in, im.Width(), im.Height(), 3,
-                                         3, BOUNDARY_HSYMMETRIC, 1.0e-1, 1);
-    delete [] in;
-    Image<RGBColor>* out = new Image<RGBColor>(w,h,WHITE);
-    RGBColor *o=out->data();
-    const std::pair<double,double>* p = pullback;
-    for(int y=0; y<h; y++)
-        for(int x=0; x<w; x++, p++,o++) {
-            double x0 = p->first;
-            double y0 = p->second;
-            if(im.Contains(y0,x0)) {
-                double c[3];
-                splinter(c, x0, y0, plan);
-                *o = clip_col(c);
-            }
-        }
-    splinter_destroy_plan(plan);
-    return out;
-}
 
 int main(int argc, char **argv) {
     double precision=0;
@@ -127,8 +81,8 @@ int main(int argc, char **argv) {
     Image<unsigned char> image1Gray, image2Gray;
     libs::convertImage(image1, &image1Gray);
     libs::convertImage(image2, &image2Gray);
-    int w1 = image1Gray.Width(), h1 = image1Gray.Height();
-    int w2 = image2Gray.Width(), h2 = image2Gray.Height();
+    const int w1 = image1Gray.Width(), h1 = image1Gray.Height();
+    const int w2 = image2Gray.Width(), h2 = image2Gray.Height();
 
     // Find matches with SIFT or read correspondence file
     std::vector<Match> matchings;
@@ -141,11 +95,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // Estimation of fundamental matrix with ORSA
+    // Estimation of fundamental matrix...
     libNumerics::matrix<double> F(3,3);
     std::vector<int> vec_inliers;
     bool ok=true;
-    if(fileMatchesIn.empty() || findInliers) {
+    if(fileMatchesIn.empty() || findInliers) { // ...with ORSA
         rm_duplicates(matchings); // Remove duplicates (frequent with SIFT)
         if((ok=orsa::orsa_fundamental(matchings,w1,h1,w2,h2,precision,ITER_ORSA,
                                       F, vec_inliers))) {
@@ -155,7 +109,7 @@ int main(int argc, char **argv) {
                 good_match.push_back(matchings[*it]);
             matchings = good_match;
         }
-    } else {
+    } else {                                   // ...with all matches
         orsa::FundamentalModel model(matchings);
         std::vector<orsa::ModelEstimator::Model> models;
         std::vector<int> indices;
@@ -166,7 +120,7 @@ int main(int argc, char **argv) {
         model.Fit(indices, &models);
         if((ok = (models.size()==1)))
             F = models.front();
-    }   
+    }
     if(! ok) {
         std::cerr << "Failed to estimate the fundamental matrix" << std::endl;
         return 1;
@@ -181,8 +135,8 @@ int main(int argc, char **argv) {
     }
 
     libNumerics::vector<double> eL(3), eR(3);
-    orientedEpipoles(matchings, F, eL, eR);
-    Polarectifyer pol(F, eL, eR, w1, h1, w2, h2);
+    orientedEpipoles(matchings, F, eL, eR); // Find epipole in each image
+    Polarectifyer pol(F, eL, eR, w1, h1, w2, h2); // Compute rectification maps
 
     const char* fileL = argv[3];
     const char* fileR = argv[4];

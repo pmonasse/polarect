@@ -3,7 +3,7 @@
  * @file draw.h
  * @brief Draw annotations on image
  *
- * Copyright (c) 2020 Pascal Monasse
+ * Copyright (c) 2020-2021 Pascal Monasse
  * All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,9 +26,13 @@
 #include "libImageIO/image.hpp"
 #include "libImageIO/pixelTypes.hpp"
 #include <vector>
+#include <utility>
 
 class Polarectifyer;
 class Match;
+
+Image<RGBColor>* sample(const Image<RGBColor>& im, int w, int h,
+                        const std::pair<double,double>* pullback);
 
 void draw_horizontal_dashed_line(Image<RGBColor>& im, int y, RGBColor c, 
                                  int length=7, int gap=3);
