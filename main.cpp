@@ -32,7 +32,6 @@
 #include "cmdLine.h"
 #include "siftMatch.hpp"
 #include "polarect.h"
-#include "sample.h"
 #include "draw.h"
 
 /// Number of random samples in ORSA
