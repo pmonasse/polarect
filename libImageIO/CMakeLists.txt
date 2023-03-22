@@ -11,23 +11,22 @@ set(SRC image.hpp
 
 add_library(ImageIO ${SRC})
 
-# zlib is needed by libPNG
-find_package(ZLIB)
-if(NOT ZLIB_FOUND)
-  add_subdirectory(../third_party/zlib ../third_party/zlib)
-endif(NOT ZLIB_FOUND)
-include_directories(${ZLIB_INCLUDE_DIRS})
-
 find_package(PNG)
 if(NOT PNG_FOUND)
+    find_package(ZLIB)
+    if(NOT ZLIB_FOUND)
+        add_subdirectory(../third_party/zlib-1.2.13 ../third_party/zlib-1.2.13)
+        set(ZLIB_FOUND TRUE)
+    endif()
+    include_directories(${ZLIB_INCLUDE_DIRS})
     set(SKIP_INSTALL_ALL 1)
-    add_subdirectory(../third_party/png ../third_party/png)
+    add_subdirectory(../third_party/libpng-1.6.39 ../third_party/libpng-1.6.39)
 endif(NOT PNG_FOUND)
 include_directories(${PNG_INCLUDE_DIRS})
 
 find_package(JPEG)
 if(NOT JPEG_FOUND)
-    add_subdirectory(../third_party/jpeg ../third_party/jpeg)
+    add_subdirectory(../third_party/jpeg-9e ../third_party/jpeg-9e)
 endif(NOT JPEG_FOUND)
 include_directories(${JPEG_INCLUDE_DIR})
 
@@ -37,7 +36,7 @@ target_link_libraries(ImageIO ${PNG_LIBRARIES} ${JPEG_LIBRARIES})
 
 if(UNIX)
     set_target_properties(ImageIO PROPERTIES
-                          COMPILE_FLAGS "-std=c++98 -Wall -Wextra -Werror")
+                          COMPILE_FLAGS "-std=c++98 -Wall -Wextra")
 endif(UNIX)
 
 if(WIN32)
